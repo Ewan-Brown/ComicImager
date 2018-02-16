@@ -1,12 +1,15 @@
 package main;
 
+import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Random;
 
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -35,49 +38,62 @@ public class Main extends JPanel implements KeyListener{
 		//		rawImage = img;
 		//		w = img.getWidth();
 		//		h = img.getHeight();
-//				newImage = new BufferedImage(w,h,rawImage.getType());
+		//				newImage = new BufferedImage(w,h,rawImage.getType());
 		newImage = new BufferedImage(w,h,BufferedImage.TYPE_3BYTE_BGR);
-				JFrame frame = new JFrame();
-				Main m = new Main();
-				frame.add(m);
-				frame.addKeyListener(m);
-				frame.setSize(w, h);
-				frame.setVisible(true);
-				frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-//				newImage = rawImage;
+		JFrame frame = new JFrame();
+		Main m = new Main();
+		frame.add(m);
+		frame.addKeyListener(m);
+		frame.setSize(w, h);
+		frame.setVisible(true);
+		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		//				newImage = rawImage;
 		reIterate();
-				while(true){
-					try {
-						Thread.sleep(10);
-					} catch (InterruptedException e) {
-						e.printStackTrace();
-					}
-					m.updateKeys();
-					m.repaint();
-				}
+		while(true){
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			m.updateKeys();
+			m.repaint();
+		}
 	}
 	public static class Triangle{
 		Point[] points = new Point[3];
 		Line[] lines = new Line[3];
-		Line topLine;
+		//List of all the calculated points that fill this triangle
+		ArrayList<Point> fillPoints = new ArrayList<Point>();
+		//The line that takes up the biggest x-space (widest)
+		Line primeLine;
+		//The corner opposite to the prime line
 		Point oppositeCorner;
+		//Whether the triangle (based off of primeLine) is 'upsidedown' or not
+		boolean cornerIsBelow;
 		Triangle(Point[] p){
-			double highestYSum = 0;
+			double maxXSize = 0;
+			int prime = 0;
+			//Calculate the prime line based off of the dX of each line.
 			for(int i = 0; i < 3;i++){
 				points[i] = p[i];
 				lines[i] = new Line(p[i], p[(i+1) % 3]);
-				double ySum = p[i].getY() + p[(i+1) % 3].getY();
-				if(ySum > highestYSum){
-					highestYSum = ySum;
-					topLine = lines[i];
+				if(Math.abs(lines[i].dX) > maxXSize){
+					Math.abs(maxXSize = Math.abs(lines[i].dX));
+					prime = i;
 				}
 			}
+			primeLine = lines[prime];
+			//Get the opposite corner
 			for(int i = 0; i < 3;i++){
-				if(!topLine.hasPoint(points[i])){
+				if(!primeLine.hasPoint(points[i])){
 					oppositeCorner = points[i];
 				}
 			}
-
+			//Y value of primeline at opposite corner's x value
+			double yP = primeLine.slope*oppositeCorner.x + primeLine.b;
+			//Check if the corner is below the prime line.
+			cornerIsBelow = oppositeCorner.y < yP;
+			
 		}
 	}
 	public static class Line{
@@ -159,18 +175,52 @@ public class Main extends JPanel implements KeyListener{
 			return p;
 		}
 	}
+	static Random rand = new Random();
+	static int i = 0;
 	public static void reIterate(){
-		Point[] p = {new Point(300,300),new Point(30,30),new Point(30,150)};
-		Triangle t = new Triangle(p);
-		Graphics2D g = (Graphics2D)newImage.getGraphics();
-		t.topLine.paint(g);
-		for(int i = 0; i < t.lines.length;i++){
+		if(i < 3){
+			i++;
+			Point[] p = {new Point(rand.nextInt(w),rand.nextInt(h)),new Point(rand.nextInt(w),rand.nextInt(h)),new Point(rand.nextInt(w),rand.nextInt(h))};
+			Triangle t = new Triangle(p);
+			Graphics2D g = (Graphics2D)newImage.getGraphics();
+			for(int i = 0; i < t.lines.length;i++){
+				t.lines[i].paint(g);
+			}
+			g.setColor(Color.RED);
+			Line pr = t.primeLine;
+			pr.paint(g);
+			if(t.cornerIsBelow) g.setColor(Color.BLUE);
+			g.fillRect(t.oppositeCorner.x, t.oppositeCorner.y, 10, 10);
+//			double maxXTop = Math.max(top.p1.getX(), top.p2.getX());
+//			double minXTop = Math.min(top.p1.getX(), top.p2.getX());
+//			System.out.println(maxXTop + " " + minXTop);
 		}
 	}
 	public void paint(Graphics gr){
 		Graphics2D g2 = (Graphics2D) gr; 
-		g2.drawImage(newImage, 0, 0, w, h,null);
+
+		g2.drawImage(createFlipped(newImage), 0, 0, w, h,null);
 	}
+	private static BufferedImage createFlipped(BufferedImage image)
+	{
+		AffineTransform at = new AffineTransform();
+		at.concatenate(AffineTransform.getScaleInstance(1, -1));
+		at.concatenate(AffineTransform.getTranslateInstance(0, -image.getHeight()));
+		return createTransformed(image, at);
+	}
+	private static BufferedImage createTransformed(
+			BufferedImage image, AffineTransform at)
+	{
+		BufferedImage newImage = new BufferedImage(
+				image.getWidth(), image.getHeight(),
+				BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = newImage.createGraphics();
+		g.transform(at);
+		g.drawImage(image, 0, 0, null);
+		g.dispose();
+		return newImage;
+	}
+
 	@Override
 	public void keyTyped(KeyEvent e) {}
 	@Override
