@@ -1,6 +1,7 @@
 package main;
 
 import java.awt.Color;
+import java.awt.FileDialog;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
@@ -8,13 +9,27 @@ import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Random;
 
+import javax.imageio.ImageIO;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
-
+/**
+ * @author Ewan
+ *The intention of this branch of this project is to take a photo and break it up into a triangle mosaic, 'cut up' fairly evenly. Then each triangle's color is the average of the pixels located inside of it
+ * in order to look cool.
+ * Hopefully this doesn't just look messy.
+ * I made my own Line and Triangle class instead of using Java's just for fun, i'm not a <i>complete</i> idiot.
+ */
 public class Main extends JPanel implements KeyListener{
+
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
 	public static BufferedImage rawImage;
 	public static BufferedImage newImage;
 	public static int w = 1000;
@@ -23,22 +38,21 @@ public class Main extends JPanel implements KeyListener{
 	boolean[] keyset = new boolean[256];
 	long[] cooldowns = new long[256];
 	public static void main(String[] args){
-		//		System.setProperty("sun.java2d.opengl","True");
-		//		FileDialog fd = new FileDialog((java.awt.Frame) null);
-		//		fd.setTitle("Choose an image");
-		//		fd.setVisible(true);
-		//		File f = new File(fd.getDirectory() + fd.getFile());
-		//		if(fd.getDirectory() == null || fd.getFile() == null)
-		//			return;
-		//		BufferedImage img = null;
-		//		try {
-		//			img = ImageIO.read(f);
-		//			img.getType();
-		//		} catch (IOException | NullPointerException e) {}
-		//		rawImage = img;
-		//		w = img.getWidth();
-		//		h = img.getHeight();
-		//				newImage = new BufferedImage(w,h,rawImage.getType());
+		System.setProperty("sun.java2d.opengl","True");
+		FileDialog fd = new FileDialog((java.awt.Frame) null);
+		fd.setTitle("Choose an image");
+		fd.setVisible(true);
+		File f = new File(fd.getDirectory() + fd.getFile());
+		if(fd.getDirectory() == null || fd.getFile() == null)
+			return;
+		BufferedImage img = null;
+		try {
+			img = ImageIO.read(f);
+			img.getType();
+		} catch (IOException | NullPointerException e) {}
+		rawImage = img;
+		w = img.getWidth();
+		h = img.getHeight();
 		newImage = new BufferedImage(w,h,BufferedImage.TYPE_3BYTE_BGR);
 		JFrame frame = new JFrame();
 		Main m = new Main();
@@ -47,7 +61,6 @@ public class Main extends JPanel implements KeyListener{
 		frame.setSize(w, h);
 		frame.setVisible(true);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		//				newImage = rawImage;
 		reIterate();
 		while(true){
 			try {
@@ -60,40 +73,115 @@ public class Main extends JPanel implements KeyListener{
 		}
 	}
 	public static class Triangle{
+		int RGB = 0;
 		Point[] points = new Point[3];
 		Line[] lines = new Line[3];
 		//List of all the calculated points that fill this triangle
 		ArrayList<Point> fillPoints = new ArrayList<Point>();
 		//The line that takes up the biggest x-space (widest)
 		Line primeLine;
-		//The corner opposite to the prime line
-		Point oppositeCorner;
+		//The point opposite to the prime line
+		Point oppositePoint;//"Corner"
+		Point startCorner;
+		Point endCorner;
+		Line leftLine;
+		Line rightLine;
 		//Whether the triangle (based off of primeLine) is 'upsidedown' or not
 		boolean cornerIsBelow;
 		Triangle(Point[] p){
 			double maxXSize = 0;
-			int prime = 0;
+			double minX = Double.MAX_VALUE;
+			double maxX = Double.MIN_VALUE;
+			int minPointI = 0;
+			int maxPointI = 0;
+			int primeI = 0;
 			//Calculate the prime line based off of the dX of each line.
 			for(int i = 0; i < 3;i++){
 				points[i] = p[i];
 				lines[i] = new Line(p[i], p[(i+1) % 3]);
 				if(Math.abs(lines[i].dX) > maxXSize){
 					Math.abs(maxXSize = Math.abs(lines[i].dX));
-					prime = i;
+					primeI = i;
+				}
+				if(points[i].x < minX){
+					minX = points[i].x;
+					minPointI = i;
+				}
+				if(points[i].x > maxX){
+					maxX = points[i].x;
+					maxPointI = i;
 				}
 			}
-			primeLine = lines[prime];
-			//Get the opposite corner
+			startCorner = points[minPointI];
+			endCorner = points[maxPointI];
+			primeLine = lines[primeI];
+			//Get the opposite corner and left/right lines
 			for(int i = 0; i < 3;i++){
 				if(!primeLine.hasPoint(points[i])){
-					oppositeCorner = points[i];
+					oppositePoint = points[i];
+				}
+				if(lines[i].hasPoint(startCorner) && lines[i] != primeLine){
+					leftLine = lines[i];
+				}
+				if(lines[i].hasPoint(endCorner) && lines[i] != primeLine){
+					rightLine = lines[i];	
 				}
 			}
 			//Y value of primeline at opposite corner's x value
-			double yP = primeLine.slope*oppositeCorner.x + primeLine.b;
+			double yP = primeLine.slope*oppositePoint.x + primeLine.b;
 			//Check if the corner is below the prime line.
-			cornerIsBelow = oppositeCorner.y < yP;
-			
+			cornerIsBelow = oppositePoint.y < yP;
+
+		}
+		public void CalculatePoints(){
+			fillPoints.clear();
+			int x = (int)startCorner.getX();
+			int y = (int)startCorner.getY();
+			for(;x < oppositePoint.x;x++){
+				boolean flag = false;
+				y = (int) (primeLine.slope * x + primeLine.b);
+				while(!flag){
+					fillPoints.add(new Point(x,y));
+					if(cornerIsBelow){
+						y--;
+					}
+					else{
+						y++;
+					}
+					flag = y > (leftLine.slope * x) + leftLine.b;
+					if(cornerIsBelow) flag = !flag;
+				}
+			}
+			for(;x < endCorner.x;x++){
+				boolean flag = false;
+				y = (int) (primeLine.slope * x + primeLine.b);
+				while(!flag){
+					fillPoints.add(new Point(x,y));
+					if(cornerIsBelow){
+						y--;
+					}
+					else{
+						y++;
+					}
+					flag = y > (rightLine.slope * x) + rightLine.b;
+					if(cornerIsBelow) flag = !flag;
+				}
+			}
+		}
+		public void CalculateColor(BufferedImage bi){
+			int r = 0;
+			int g = 0;
+			int b = 0;
+			for(Point p : fillPoints){
+				int RGB = bi.getRGB(p.x, p.y);
+				r += (RGB >> 16) & 0x000000FF;
+				g += (RGB >> 8) & 0x000000FF;
+				b += (RGB) & 0x000000FF;
+			}
+			r = (int)((float)r / (float)fillPoints.size());
+			g = (int)((float)g / (float)fillPoints.size());
+			b = (int)((float)b / (float)fillPoints.size());
+			this.RGB = r << 16 | g << 8 | b;
 		}
 	}
 	public static class Line{
@@ -176,49 +264,40 @@ public class Main extends JPanel implements KeyListener{
 		}
 	}
 	static Random rand = new Random();
-	static int i = 0;
 	public static void reIterate(){
-		if(i < 3){
-			i++;
-			Point[] p = {new Point(rand.nextInt(w),rand.nextInt(h)),new Point(rand.nextInt(w),rand.nextInt(h)),new Point(rand.nextInt(w),rand.nextInt(h))};
-			Triangle t = new Triangle(p);
-			Graphics2D g = (Graphics2D)newImage.getGraphics();
-			for(int i = 0; i < t.lines.length;i++){
-				t.lines[i].paint(g);
+		ArrayList<Triangle> tA = new ArrayList<Triangle>();
+		newImage = new BufferedImage(w,h,BufferedImage.TYPE_3BYTE_BGR);
+		Graphics2D g = (Graphics2D)newImage.getGraphics();
+		double ratio = (double)h / (double)w;
+		int hzf = block;
+		int wzf = block;
+		int hz = (int)((double)h / (double)hzf);
+		int wz = (int)((double)w / (double)wzf);
+		for(int x = 0; x < wz - 2;x++){
+			for(int y = 0; y < hz - 2;y++){
+				int xz = x * wzf;
+				int yz = y * hzf;
+				int xzE = xz + wzf;
+				int yzE = yz + hzf;
+				Point[] p = {new Point(xz,yz),new Point(xz,yzE),new Point(xzE,yz)};
+				Point[] p2 = {new Point(xzE,yzE),new Point(xz,yzE),new Point(xzE,yz)};
+				tA.add(new Triangle(p));
+				tA.add(new Triangle(p2));
 			}
-			g.setColor(Color.RED);
-			Line pr = t.primeLine;
-			pr.paint(g);
-			if(t.cornerIsBelow) g.setColor(Color.BLUE);
-			g.fillRect(t.oppositeCorner.x, t.oppositeCorner.y, 10, 10);
-//			double maxXTop = Math.max(top.p1.getX(), top.p2.getX());
-//			double minXTop = Math.min(top.p1.getX(), top.p2.getX());
-//			System.out.println(maxXTop + " " + minXTop);
+		}
+		for(int i = 0; i < tA.size();i++){
+			tA.get(i).CalculatePoints();
+			tA.get(i).CalculateColor(rawImage);
+			ArrayList<Point> pA = tA.get(i).fillPoints;
+			for(int j = 0; j < pA.size();j++){
+				g.fillRect(pA.get(j).x, pA.get(j).y, 1, 1);
+				newImage.setRGB(pA.get(j).x, pA.get(j).y, tA.get(i).RGB);
+			}
 		}
 	}
 	public void paint(Graphics gr){
 		Graphics2D g2 = (Graphics2D) gr; 
-
-		g2.drawImage(createFlipped(newImage), 0, 0, w, h,null);
-	}
-	private static BufferedImage createFlipped(BufferedImage image)
-	{
-		AffineTransform at = new AffineTransform();
-		at.concatenate(AffineTransform.getScaleInstance(1, -1));
-		at.concatenate(AffineTransform.getTranslateInstance(0, -image.getHeight()));
-		return createTransformed(image, at);
-	}
-	private static BufferedImage createTransformed(
-			BufferedImage image, AffineTransform at)
-	{
-		BufferedImage newImage = new BufferedImage(
-				image.getWidth(), image.getHeight(),
-				BufferedImage.TYPE_INT_ARGB);
-		Graphics2D g = newImage.createGraphics();
-		g.transform(at);
-		g.drawImage(image, 0, 0, null);
-		g.dispose();
-		return newImage;
+		g2.drawImage(newImage, 0, 0, w, h,null);
 	}
 
 	@Override
@@ -235,24 +314,25 @@ public class Main extends JPanel implements KeyListener{
 	public void updateKeys(){
 		ticks++;
 		if(ticks > 7){
-			reIterate();
 			ticks = 0;
 		}
 		for(int i = 0; i < cooldowns.length;i++){
 			cooldowns[i]--;
 		}
 		if(keyset[KeyEvent.VK_LEFT] && cooldowns[KeyEvent.VK_LEFT] < 0){
+			reIterate();
 			cooldowns[KeyEvent.VK_LEFT] = 5L;
 			block -= 1;
-			if(block < 0){
-				block = 0;
+			if(block < 3){
+				block = 3;
 			}
 		}
 		if(keyset[KeyEvent.VK_RIGHT] && cooldowns[KeyEvent.VK_RIGHT] < 0){
+			reIterate();
 			cooldowns[KeyEvent.VK_RIGHT] = 5L;
 			block += 1;
-			if (block > 255){
-				block = 255;
+			if (block > Math.min(w, h)){
+				block = Math.min(w, h);
 			}
 		}
 	}
