@@ -1,13 +1,11 @@
 package main;
 
-import java.awt.Color;
 import java.awt.FileDialog;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
-import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -32,11 +30,14 @@ public class Main extends JPanel implements KeyListener{
 	private static final long serialVersionUID = 1L;
 	public static BufferedImage rawImage;
 	public static BufferedImage newImage;
+	public static FastRGB fastRGB;
 	public static int w = 1000;
 	public static int h = 1000;
-	public static int block = 50;
+	public static int blockx = 5; // 5 is a good value for benchmark
+	public static int blocky = 5; // me too 
 	boolean[] keyset = new boolean[256];
 	long[] cooldowns = new long[256];
+	static Random rand = new Random();
 	public static void main(String[] args){
 		System.setProperty("sun.java2d.opengl","True");
 		FileDialog fd = new FileDialog((java.awt.Frame) null);
@@ -53,7 +54,6 @@ public class Main extends JPanel implements KeyListener{
 		rawImage = img;
 		w = img.getWidth();
 		h = img.getHeight();
-		newImage = new BufferedImage(w,h,BufferedImage.TYPE_3BYTE_BGR);
 		JFrame frame = new JFrame();
 		Main m = new Main();
 		frame.add(m);
@@ -61,6 +61,8 @@ public class Main extends JPanel implements KeyListener{
 		frame.setSize(w, h);
 		frame.setVisible(true);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		fastRGB = new FastRGB(rawImage);
+		newImage = new BufferedImage(w,h,BufferedImage.TYPE_3BYTE_BGR);
 		reIterate();
 		while(true){
 			try {
@@ -70,221 +72,31 @@ public class Main extends JPanel implements KeyListener{
 			}
 			m.updateKeys();
 			m.repaint();
+			reIterate();
 		}
 	}
-	public static class Triangle{
-		int RGB = 0;
-		Point[] points = new Point[3];
-		Line[] lines = new Line[3];
-		//List of all the calculated points that fill this triangle
-		ArrayList<Point> fillPoints = new ArrayList<Point>();
-		//The line that takes up the biggest x-space (widest)
-		Line primeLine;
-		//The point opposite to the prime line
-		Point oppositePoint;//"Corner"
-		Point startCorner;
-		Point endCorner;
-		Line leftLine;
-		Line rightLine;
-		//Whether the triangle (based off of primeLine) is 'upsidedown' or not
-		boolean cornerIsBelow;
-		Triangle(Point[] p){
-			double maxXSize = 0;
-			double minX = Double.MAX_VALUE;
-			double maxX = Double.MIN_VALUE;
-			int minPointI = 0;
-			int maxPointI = 0;
-			int primeI = 0;
-			//Calculate the prime line based off of the dX of each line.
-			for(int i = 0; i < 3;i++){
-				points[i] = p[i];
-				lines[i] = new Line(p[i], p[(i+1) % 3]);
-				if(Math.abs(lines[i].dX) > maxXSize){
-					Math.abs(maxXSize = Math.abs(lines[i].dX));
-					primeI = i;
-				}
-				if(points[i].x < minX){
-					minX = points[i].x;
-					minPointI = i;
-				}
-				if(points[i].x > maxX){
-					maxX = points[i].x;
-					maxPointI = i;
-				}
-			}
-			startCorner = points[minPointI];
-			endCorner = points[maxPointI];
-			primeLine = lines[primeI];
-			//Get the opposite corner and left/right lines
-			for(int i = 0; i < 3;i++){
-				if(!primeLine.hasPoint(points[i])){
-					oppositePoint = points[i];
-				}
-				if(lines[i].hasPoint(startCorner) && lines[i] != primeLine){
-					leftLine = lines[i];
-				}
-				if(lines[i].hasPoint(endCorner) && lines[i] != primeLine){
-					rightLine = lines[i];	
-				}
-			}
-			//Y value of primeline at opposite corner's x value
-			double yP = primeLine.slope*oppositePoint.x + primeLine.b;
-			//Check if the corner is below the prime line.
-			cornerIsBelow = oppositePoint.y < yP;
-
-		}
-		public void CalculatePoints(){
-			fillPoints.clear();
-			int x = (int)startCorner.getX();
-			int y = (int)startCorner.getY();
-			for(;x < oppositePoint.x;x++){
-				boolean flag = false;
-				y = (int) (primeLine.slope * x + primeLine.b);
-				while(!flag){
-					fillPoints.add(new Point(x,y));
-					if(cornerIsBelow){
-						y--;
-					}
-					else{
-						y++;
-					}
-					flag = y > (leftLine.slope * x) + leftLine.b;
-					if(cornerIsBelow) flag = !flag;
-				}
-			}
-			for(;x < endCorner.x;x++){
-				boolean flag = false;
-				y = (int) (primeLine.slope * x + primeLine.b);
-				while(!flag){
-					fillPoints.add(new Point(x,y));
-					if(cornerIsBelow){
-						y--;
-					}
-					else{
-						y++;
-					}
-					flag = y > (rightLine.slope * x) + rightLine.b;
-					if(cornerIsBelow) flag = !flag;
-				}
-			}
-		}
-		public void CalculateColor(BufferedImage bi){
-			int r = 0;
-			int g = 0;
-			int b = 0;
-			for(Point p : fillPoints){
-				int RGB = bi.getRGB(p.x, p.y);
-				r += (RGB >> 16) & 0x000000FF;
-				g += (RGB >> 8) & 0x000000FF;
-				b += (RGB) & 0x000000FF;
-			}
-			r = (int)((float)r / (float)fillPoints.size());
-			g = (int)((float)g / (float)fillPoints.size());
-			b = (int)((float)b / (float)fillPoints.size());
-			this.RGB = r << 16 | g << 8 | b;
-		}
-	}
-	public static class Line{
-		Point p1;
-		Point p2;
-		double slope = 0;
-		double b = 0;
-		double dX,dY;
-		Line(Point p1, Point p2){
-			this.p1 = p1;
-			this.p2 = p2;
-			dX = p2.getX() - p1.getX();
-			dY = p2.getY() - p1.getY();
-			slope = dY / dX;
-			b = p1.getY() - slope*p1.getX();
-			bresenhamsPoints = getBresenhamsPoints();
-			for(int i = 1; i < bresenhamsPoints.size();i++){
-				if(bresenhamsPoints.get(i).equals(bresenhamsPoints.get(i-1))){
-					bresenhamsPoints.remove(i);
-				}
-			}
-		}
-		Line(int x1, int y1, int x2, int y2){
-			this(new Point(x1,y1),new Point(x2,y2));
-		}
-		public void paint(Graphics g){
-			g.drawLine(p1.x, p1.y, p2.x, p2.y);
-		}
-		public boolean hasPoint(Point points){
-			return p1.equals(points) || p2.equals(points);
-		}
-		ArrayList<Point> bresenhamsPoints = new ArrayList<Point>();
-		public ArrayList<Point> getBresenhamsPoints(){
-			ArrayList<Point> p = new ArrayList<Point>();
-			p.add(new Point((int)p1.getX(),(int)p1.getY()));
-			int d = 0;
-			int x1 = (int)p1.getX();
-			int x2 = (int)p2.getX();
-			int y1 = (int)p1.getY();
-			int y2 = (int)p2.getY();
-			int dx = Math.abs(x2 - x1);
-			int dy = Math.abs(y2 - y1);
-
-			int dx2 = 2 * dx; // slope scaling factors to
-			int dy2 = 2 * dy; // avoid floating point
-
-			int ix = x1 < x2 ? 1 : -1; // increment direction
-			int iy = y1 < y2 ? 1 : -1;
-
-			int x = x1;
-			int y = y1;
-			if (dx >= dy) {
-				while (true) {
-					p.add(new Point(x,y));
-					if (x == x2)
-						break;
-					x += ix;
-					d += dy2;
-					if (d > dx) {
-						y += iy;
-						d -= dx2;
-					}
-
-				}
-			} else {
-				while (true) {
-					p.add(new Point(x,y));
-					if (y == y2)
-						break;
-					y += iy;
-					d += dx2;
-					if (d > dy) {
-						x += ix;
-						d -= dy2;
-					}
-
-				}
-			}
-			return p;
-		}
-	}
-	static Random rand = new Random();
-	public static void reIterate(){
-		ArrayList<Triangle> tA = new ArrayList<Triangle>();
-		newImage = new BufferedImage(w,h,BufferedImage.TYPE_3BYTE_BGR);
-		Graphics2D g = (Graphics2D)newImage.getGraphics();
-		double ratio = (double)h / (double)w;
-		int hzf = block;
-		int wzf = block;
-		int hz = (int)((double)h / (double)hzf);
-		int wz = (int)((double)w / (double)wzf);
-		for(int x = 0; x < wz - 2;x++){
-			for(int y = 0; y < hz - 2;y++){
+	public static void reIterate1(int wz, int hz, int wzf, int hzf, ArrayList<Triangle> tA){
+		for(int x = 0; x < wz - 1;x++){
+			for(int y = 0; y < hz - 1;y++){
+				
+				//~1%
 				int xz = x * wzf;
 				int yz = y * hzf;
 				int xzE = xz + wzf;
 				int yzE = yz + hzf;
 				Point[] p = {new Point(xz,yz),new Point(xz,yzE),new Point(xzE,yz)};
 				Point[] p2 = {new Point(xzE,yzE),new Point(xz,yzE),new Point(xzE,yz)};
-				tA.add(new Triangle(p));
-				tA.add(new Triangle(p2));
+				
+				//33.3%
+				reIterate1A(tA, p); 
+				reIterate1A(tA, p2);
 			}
 		}
+	}
+	public static void reIterate1A(ArrayList<Triangle> tA, Point[] p){
+		tA.add(new Triangle(p));
+	}
+	public static void reIterate2(ArrayList<Triangle> tA, Graphics2D g){
 		for(int i = 0; i < tA.size();i++){
 			tA.get(i).CalculatePoints();
 			tA.get(i).CalculateColor(rawImage);
@@ -294,6 +106,19 @@ public class Main extends JPanel implements KeyListener{
 				newImage.setRGB(pA.get(j).x, pA.get(j).y, tA.get(i).RGB);
 			}
 		}
+	}
+	public static void reIterate(){				//99.8%
+		ArrayList<Triangle> tA = new ArrayList<Triangle>();
+		Graphics2D g = (Graphics2D)newImage.getGraphics();
+		newImage = new BufferedImage(w,h,BufferedImage.TYPE_3BYTE_BGR);
+		int hzf = blockx;
+		int wzf = blocky;
+		int hz = (int)((double)h / (double)hzf);
+		int wz = (int)((double)w / (double)wzf);
+		
+		reIterate1(wz, hz, wzf, hzf, tA);   	//65 %
+		reIterate2(tA, g);				    	//34 %
+
 	}
 	public void paint(Graphics gr){
 		Graphics2D g2 = (Graphics2D) gr; 
@@ -322,17 +147,33 @@ public class Main extends JPanel implements KeyListener{
 		if(keyset[KeyEvent.VK_LEFT] && cooldowns[KeyEvent.VK_LEFT] < 0){
 			reIterate();
 			cooldowns[KeyEvent.VK_LEFT] = 5L;
-			block -= 1;
-			if(block < 3){
-				block = 3;
+			blockx -= 1;
+			if(blockx < 1){
+				blockx = 1;
 			}
 		}
 		if(keyset[KeyEvent.VK_RIGHT] && cooldowns[KeyEvent.VK_RIGHT] < 0){
 			reIterate();
 			cooldowns[KeyEvent.VK_RIGHT] = 5L;
-			block += 1;
-			if (block > Math.min(w, h)){
-				block = Math.min(w, h);
+			blockx += 1;
+			if (blockx > w){
+				blockx = w;
+			}
+		}
+		if(keyset[KeyEvent.VK_DOWN] && cooldowns[KeyEvent.VK_DOWN] < 0){
+			reIterate();
+			cooldowns[KeyEvent.VK_DOWN] = 5L;
+			blocky -= 1;
+			if(blocky < 3){
+				blocky = 3;
+			}
+		}
+		if(keyset[KeyEvent.VK_UP] && cooldowns[KeyEvent.VK_UP] < 0){
+			reIterate();
+			cooldowns[KeyEvent.VK_UP] = 5L;
+			blocky += 1;
+			if (blocky > h){
+				blocky = h;
 			}
 		}
 	}
