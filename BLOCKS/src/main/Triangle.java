@@ -1,7 +1,6 @@
 package main;
 
 import java.awt.Point;
-import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 
 
@@ -101,19 +100,24 @@ public class Triangle {
 			}
 		}
 	}
-	public void CalculateColor(BufferedImage bi){
+	public void CalculateColor(FastRGB fRGB){
 		int r = 0;
 		int g = 0;
 		int b = 0;
+		int i = 0;
 		for(Point p : fillPoints){
-			int RGB = bi.getRGB(p.x, p.y);
-			r += (RGB >> 16) & 0x000000FF;
-			g += (RGB >> 8) & 0x000000FF;
-			b += (RGB) & 0x000000FF;
+			int RGB = fRGB.getRGB(p.x, p.y);
+			if(RGB != -1){
+				i++;
+				r += (RGB >> 16) & 0x000000FF;
+				g += (RGB >> 8) & 0x000000FF;
+				b += (RGB) & 0x000000FF;
+			}
+
 		}
-		r = (int)((float)r / (float)fillPoints.size());
-		g = (int)((float)g / (float)fillPoints.size());
-		b = (int)((float)b / (float)fillPoints.size());
+		r = (int)((float)r / (float)i);
+		g = (int)((float)g / (float)i);
+		b = (int)((float)b / (float)i);
 		this.RGB = r << 16 | g << 8 | b;
 	}
 }
